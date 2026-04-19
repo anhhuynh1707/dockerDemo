@@ -54,7 +54,7 @@ func createProduct(c *gin.Context) {
 
 	id, _ := result.LastInsertId()
 	p.ID = int64(id)
-	c.JSON(http.StatusOK, gin.H{"message": "Product created", "product": p})
+	c.JSON(http.StatusCreated, gin.H{"message": "Product created", "product": p})
 }
 
 // GET /products
@@ -94,7 +94,7 @@ func getProductById(c *gin.Context) {
 	id := c.Param("id")
 
 	var p Product
-	err := DB.QueryRow(`SELECT * FROM products WHERE id = ?`, id).
+	err := DB.QueryRow(`SELECT id, product_code, name, price, quantity, category, description, created_at FROM products WHERE id = ?`, id).
 		Scan(&p.ID, &p.ProductCode, &p.Name, &p.Price,
 			&p.Quantity, &p.Category, &p.Description, &p.CreatedAt)
 
@@ -170,7 +170,7 @@ func deleteProductById(c *gin.Context) {
 
 // GET /products/category/
 func getAllCategories(c *gin.Context) {
-	rows, err := DB.Query(`SELECT DISTINCT category FROM products`)
+	rows, err := DB.Query(`SELECT DISTINCT LOWER(category) FROM products`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -180,7 +180,10 @@ func getAllCategories(c *gin.Context) {
 	var categories []string
 	for rows.Next() {
 		var cat string
-		rows.Scan(&cat)
+		if err := rows.Scan(&cat); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		categories = append(categories, cat)
 	}
 
@@ -192,7 +195,7 @@ func getProductsByCategory(c *gin.Context) {
 	category := c.Param("category")
 
 	rows, err := DB.Query(`
-		SELECT * FROM products WHERE category=?`, category)
+	SELECT id, product_code, name, price, quantity, category, description, created_at FROM products WHERE LOWER(category)=LOWER(?)`, category)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -202,8 +205,11 @@ func getProductsByCategory(c *gin.Context) {
 	var products []Product
 	for rows.Next() {
 		var p Product
-		rows.Scan(&p.ID, &p.ProductCode, &p.Name, &p.Price,
-			&p.Quantity, &p.Category, &p.Description, &p.CreatedAt)
+		if err := rows.Scan(&p.ID, &p.ProductCode, &p.Name, &p.Price,
+			&p.Quantity, &p.Category, &p.Description, &p.CreatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		products = append(products, p)
 	}
 
@@ -224,7 +230,7 @@ func getProductsPagination(c *gin.Context) {
 	offset := (page - 1) * limit
 
 	rows, err := DB.Query(`
-		SELECT * FROM products LIMIT ? OFFSET ?`, limit, offset)
+		SELECT id, product_code, name, price, quantity, category, description, created_at FROM products LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -234,8 +240,11 @@ func getProductsPagination(c *gin.Context) {
 	var products []Product
 	for rows.Next() {
 		var p Product
-		rows.Scan(&p.ID, &p.ProductCode, &p.Name, &p.Price,
-			&p.Quantity, &p.Category, &p.Description, &p.CreatedAt)
+		if err := rows.Scan(&p.ID, &p.ProductCode, &p.Name, &p.Price,
+			&p.Quantity, &p.Category, &p.Description, &p.CreatedAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 		products = append(products, p)
 	}
 
@@ -277,14 +286,13 @@ func filterProducts(c *gin.Context) {
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "5"))
-	offset := (page - 1) * limit
-
 	if page < 1 {
 		page = 1
 	}
 	if limit <= 0 {
 		limit = 5
 	}
+	offset := (page - 1) * limit
 
 	// Base query
 	query := `SELECT id, product_code, name, price, quantity, category, description, created_at 
@@ -346,7 +354,8 @@ func filterProducts(c *gin.Context) {
 			&p.Description,
 			&p.CreatedAt,
 		); err != nil {
-			continue
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 		products = append(products, p)
 	}
