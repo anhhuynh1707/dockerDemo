@@ -32,6 +32,23 @@ func createProduct(c *gin.Context) {
 		return
 	}
 
+	if p.Price > 100000000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Price too large"})
+		return
+	}
+
+	var exists int
+	err := DB.QueryRow("SELECT COUNT(*) FROM products WHERE product_code = ?", p.ProductCode).Scan(&exists)
+
+	if exists > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Product code already exists"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
 	query := `
 	INSERT INTO products 
 	(product_code, name, price, quantity, category, description, created_at) 
@@ -120,6 +137,16 @@ func updateProductById(c *gin.Context) {
 		return
 	}
 
+	if p.ProductCode == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Product code cannot be empty"})
+		return
+	}
+
+	if p.Price > 100000000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Price too large"})
+		return
+	}
+
 	query := `
 	UPDATE products 
 	SET product_code=?, name=?, price=?, quantity=?, category=?, description=?
@@ -170,7 +197,7 @@ func deleteProductById(c *gin.Context) {
 
 // GET /products/category/
 func getAllCategories(c *gin.Context) {
-	rows, err := DB.Query(`SELECT DISTINCT LOWER(category) FROM products`)
+	rows, err := DB.Query(`SELECT DISTINCT category FROM products`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -195,7 +222,7 @@ func getProductsByCategory(c *gin.Context) {
 	category := c.Param("category")
 
 	rows, err := DB.Query(`
-	SELECT id, product_code, name, price, quantity, category, description, created_at FROM products WHERE LOWER(category)=LOWER(?)`, category)
+	SELECT id, product_code, name, price, quantity, category, description, created_at FROM products WHERE category = ?`, category)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
